@@ -7,8 +7,16 @@ import (
 	"strings"
 )
 
+type Status int
+
+const (
+	initialized Status = iota
+	done
+)
+
 type Request struct {
 	RequestLine RequestLine
+	status      Status
 }
 
 type RequestLine struct {
@@ -17,67 +25,90 @@ type RequestLine struct {
 	Method        string
 }
 
-const crlf = "\r\n"
-
 func RequestFromReader(reader io.Reader) (*Request, error) {
-	rawBytes, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, err
-	}
-	requestLine, err := parseRequestLine(rawBytes)
-	if err != nil {
-		return nil, err
-	}
-	return &Request{
-		RequestLine: *requestLine,
-	}, nil
-}
+	buffer := make([]byte, 8)
+	readtoIndex := 0
 
-func parseRequestLine(data []byte) (*RequestLine, error) {
-	idx := bytes.Index(data, []byte(crlf))
-	if idx == -1 {
-		return nil, fmt.Errorf("could not find CRLF in request-line")
-	}
-	requestLineText := string(data[:idx])
-	requestLine, err := requestLineFromString(requestLineText)
-	if err != nil {
-		return nil, err
-	}
-	return requestLine, nil
-}
-
-func requestLineFromString(str string) (*RequestLine, error) {
-	parts := strings.Split(str, " ")
-	if len(parts) != 3 {
-		return nil, fmt.Errorf("poorly formatted request-line: %s", str)
+	r := &Request{
+		status: initialized,
 	}
 
-	method := parts[0]
-	for _, c := range method {
-		if c < 'A' || c > 'Z' {
-			return nil, fmt.Errorf("invalid method: %s", method)
+	for r.status != done {
+
+		if readtoIndex == len(buffer) {
+			newBuffer := make([]byte, len(buffer)*2)
+			copy(newBuffer, buffer)
+			buffer = newBuffer
+		}
+
+		n, err := reader.Read(buffer[readtoIndex:])
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+
+		readtoIndex += n
+
+		consumed, err := r.parse(buffer[:readtoIndex])
+		if err != nil {
+			return nil, err
+		}
+
+		if consumed > 0 {
+			copy(buffer, buffer[consumed:readtoIndex])
+			readtoIndex -= consumed
 		}
 	}
 
-	requestTarget := parts[1]
-
-	versionParts := strings.Split(parts[2], "/")
-	if len(versionParts) != 2 {
-		return nil, fmt.Errorf("malformed start-line: %s", str)
+	if r.status != done {
+		return nil, fmt.Errorf("incomplete request")
 	}
 
-	httpPart := versionParts[0]
-	if httpPart != "HTTP" {
-		return nil, fmt.Errorf("unrecognized HTTP-version: %s", httpPart)
+	return r, nil
+}
+
+func (r *Request) parse(data []byte) (int, error) {
+	switch r.status {
+	case initialized:
+		rl, consumed, err := parseRequestLine(data)
+		if err != nil {
+			return 0, err
+		}
+		if consumed == 0 {
+			return 0, nil
+		}
+
+		r.RequestLine = rl
+		r.status = done
+		return consumed, nil
+	case done:
+		return 0, fmt.Errorf("error: trying to read data in a done state")
+	default:
+		return 0, fmt.Errorf("error: unknown state")
 	}
-	version := versionParts[1]
-	if version != "1.1" {
-		return nil, fmt.Errorf("unrecognized HTTP-version: %s", version)
+}
+
+func parseRequestLine(data []byte) (RequestLine, int, error) {
+	end := bytes.Index(data, []byte("\r\n"))
+	if end == -1 {
+		// Need more data
+		return RequestLine{}, 0, nil
 	}
 
-	return &RequestLine{
-		Method:        method,
-		RequestTarget: requestTarget,
-		HttpVersion:   versionParts[1],
-	}, nil
+	line := string(data[:end])
+	parts := strings.Split(line, " ")
+	if len(parts) != 3 {
+		return RequestLine{}, 0, fmt.Errorf("malformed request line")
+	}
+
+	if !strings.HasPrefix(parts[2], "HTTP/") {
+		return RequestLine{}, 0, fmt.Errorf("invalid http version")
+	}
+
+	rl := RequestLine{
+		Method:        parts[0],
+		RequestTarget: parts[1],
+		HttpVersion:   strings.TrimPrefix(parts[2], "HTTP/"),
+	}
+
+	return rl, end + 2, nil
 }
