@@ -25,6 +25,14 @@ type RequestLine struct {
 	Method        string
 }
 
+func (r *RequestLine) ToString() string {
+	str := "Request line:\n"
+	str += "- Method: " + r.Method + "\n"
+	str += "- Target: " + r.RequestTarget + "\n"
+	str += "- Version: " + r.HttpVersion + "\n"
+	return str
+}
+
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	buffer := make([]byte, 8)
 	readtoIndex := 0
