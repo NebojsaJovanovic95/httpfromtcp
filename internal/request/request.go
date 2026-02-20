@@ -3,6 +3,7 @@ package request
 import (
 	"bytes"
 	"fmt"
+	"httpfromtcp/internal/headers"
 	"io"
 	"strings"
 )
@@ -10,12 +11,14 @@ import (
 type Status int
 
 const (
-	initialized Status = iota
-	done
+	statusInitialized Status = iota
+	statusParsingHeaders
+	statusDone
 )
 
 type Request struct {
 	RequestLine RequestLine
+	Headers     headers.Headers
 	status      Status
 }
 
@@ -35,48 +38,70 @@ func (r *RequestLine) ToString() string {
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	buffer := make([]byte, 8)
-	readtoIndex := 0
+	readTo := 0
 
 	r := &Request{
-		status: initialized,
+		status:  statusInitialized,
+		Headers: headers.NewHeaders(),
 	}
 
-	for r.status != done {
-
-		if readtoIndex == len(buffer) {
-			newBuffer := make([]byte, len(buffer)*2)
-			copy(newBuffer, buffer)
-			buffer = newBuffer
+	for {
+		if readTo == len(buffer) {
+			newBuf := make([]byte, len(buffer)*2)
+			copy(newBuf, buffer[:readTo])
+			buffer = newBuf
 		}
 
-		n, err := reader.Read(buffer[readtoIndex:])
-		if err != nil && err != io.EOF {
-			return nil, err
+		n, err := reader.Read(buffer[readTo:])
+		if n > 0 {
+			readTo += n
 		}
 
-		readtoIndex += n
-
-		consumed, err := r.parse(buffer[:readtoIndex])
-		if err != nil {
-			return nil, err
+		consumed, parseErr := r.parse(buffer[:readTo])
+		if parseErr != nil {
+			return nil, parseErr
 		}
 
 		if consumed > 0 {
-			copy(buffer, buffer[consumed:readtoIndex])
-			readtoIndex -= consumed
+			copy(buffer, buffer[consumed:readTo])
+			readTo -= consumed
+		}
+
+		if r.status == statusDone {
+			return r, nil
+		}
+
+		if err == io.EOF {
+			if consumed == 0 {
+				return nil, fmt.Errorf("incomplete request")
+			}
 		}
 	}
-
-	if r.status != done {
-		return nil, fmt.Errorf("incomplete request")
-	}
-
-	return r, nil
 }
 
 func (r *Request) parse(data []byte) (int, error) {
+	totalConsumed := 0
+
+	for r.status != statusDone {
+		n, err := r.parseSingle(data[totalConsumed:])
+		if err != nil {
+			return totalConsumed, err
+		}
+
+		if n == 0 {
+			break
+		}
+
+		totalConsumed += n
+	}
+
+	return totalConsumed, nil
+}
+
+func (r *Request) parseSingle(data []byte) (int, error) {
 	switch r.status {
-	case initialized:
+
+	case statusInitialized:
 		rl, consumed, err := parseRequestLine(data)
 		if err != nil {
 			return 0, err
@@ -86,19 +111,37 @@ func (r *Request) parse(data []byte) (int, error) {
 		}
 
 		r.RequestLine = rl
-		r.status = done
+		r.status = statusParsingHeaders
 		return consumed, nil
-	case done:
-		return 0, fmt.Errorf("error: trying to read data in a done state")
-	default:
-		return 0, fmt.Errorf("error: unknown state")
+
+	case statusParsingHeaders:
+		if r.Headers == nil {
+			r.Headers = headers.NewHeaders()
+		}
+
+		n, done, err := r.Headers.Parse(data)
+		if err != nil {
+			return 0, err
+		}
+
+		if n == 0 {
+			return 0, nil
+		}
+
+		if done {
+			r.status = statusDone
+		}
+
+		return n, nil
+
 	}
+
+	return 0, fmt.Errorf("unknown state")
 }
 
 func parseRequestLine(data []byte) (RequestLine, int, error) {
 	end := bytes.Index(data, []byte("\r\n"))
 	if end == -1 {
-		// Need more data
 		return RequestLine{}, 0, nil
 	}
 

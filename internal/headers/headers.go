@@ -20,24 +20,38 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	}
 
 	if end == 0 {
-		return 0, true, nil
+		return 2, true, nil
 	}
 
 	line := string(data[:end])
-	parts := strings.Split(line, ": ")
-	if len(parts) != 2 {
-		return 0, false, fmt.Errorf("malformed header line")
-	}
-	if strings.Contains(parts[0], " ") || strings.Contains(parts[1], " ") {
+
+	if line != strings.TrimSpace(line) {
 		return 0, false, fmt.Errorf("invalid spacing header")
 	}
-	for _, r := range parts[0] {
+
+	colonIndex := strings.Index(line, ": ")
+	if colonIndex == -1 {
+		return 0, false, fmt.Errorf("malformed header line")
+	}
+
+	key := line[:colonIndex]
+	value := line[colonIndex+2:]
+
+	if strings.HasSuffix(key, " ") {
+		return 0, false, fmt.Errorf("invalid spacing header")
+	}
+
+	if key == "" {
+		return 0, false, fmt.Errorf("empty header key")
+	}
+
+	for _, r := range key {
 		if !isValidTChar(r) {
-			return 0, false, fmt.Errorf("key contains non alphanumeric runes")
+			return 0, false, fmt.Errorf("invalid header key")
 		}
 	}
-	key := strings.ToLower(parts[0])
-	value := strings.TrimSpace(parts[1])
+
+	key = strings.ToLower(key)
 
 	if existing, ok := h[key]; ok {
 		h[key] = existing + ", " + value
@@ -49,11 +63,9 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 }
 
 func isValidTChar(r rune) bool {
-	// ALPHA
 	if unicode.IsLetter(r) {
 		return true
 	}
-	// DIGIT
 	if unicode.IsDigit(r) {
 		return true
 	}
