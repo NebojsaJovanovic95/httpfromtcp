@@ -9,13 +9,17 @@ import (
 type Headers map[string]string
 
 func NewHeaders() Headers {
-	h := make(map[string]string, 8)
-	return h
+	return make(Headers)
 }
+
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	end := bytes.Index(data, []byte("\r\n\r\n"))
 	if end == -1 {
 		return 0, false, nil
+	}
+
+	if end == 0 {
+		return 0, true, nil
 	}
 
 	line := string(data[:end])
