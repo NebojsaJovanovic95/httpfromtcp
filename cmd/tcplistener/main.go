@@ -27,7 +27,7 @@ func main() {
 			fmt.Println("error:", err)
 		}
 
-		fmt.Println(rl.RequestLine.ToString())
+		fmt.Println(rl.ToString())
 
 		fmt.Println("connection closed")
 	}

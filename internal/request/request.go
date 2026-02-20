@@ -36,6 +36,15 @@ func (r *RequestLine) ToString() string {
 	return str
 }
 
+func (r *Request) ToString() string {
+	str := r.RequestLine.ToString()
+	str += "Headers:\n"
+	for key, value := range r.Headers {
+		str += fmt.Sprintf("- %s: %s\n", key, value)
+	}
+	return str
+}
+
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	buffer := make([]byte, 8)
 	readTo := 0
