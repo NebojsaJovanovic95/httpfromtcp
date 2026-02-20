@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"httpfromtcp/internal/headers"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -13,13 +14,16 @@ type Status int
 const (
 	statusInitialized Status = iota
 	statusParsingHeaders
+	statusParsingBody
 	statusDone
 )
 
 type Request struct {
-	RequestLine RequestLine
-	Headers     headers.Headers
-	status      Status
+	RequestLine   RequestLine
+	Headers       headers.Headers
+	Body          []byte
+	bodyLinesRead int
+	status        Status
 }
 
 type RequestLine struct {
@@ -52,6 +56,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	r := &Request{
 		status:  statusInitialized,
 		Headers: headers.NewHeaders(),
+		Body:    make([]byte, 0),
 	}
 
 	for {
@@ -138,10 +143,34 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 		}
 
 		if done {
-			r.status = statusDone
+			r.status = statusParsingBody
 		}
 
 		return n, nil
+
+	case statusParsingBody:
+		contentLengthString, ok := r.Headers.Get("content-length")
+		if !ok {
+			r.status = statusDone
+			return len(data), nil
+		}
+
+		contentLength, err := strconv.Atoi(contentLengthString)
+		if err != nil {
+			return 0, fmt.Errorf("malformed content-length: %s", err)
+		}
+
+		r.Body = append(r.Body, data...)
+		r.bodyLinesRead += len(data)
+		if r.bodyLinesRead > contentLength {
+			return 0, fmt.Errorf("content-length is too large")
+		}
+
+		if r.bodyLinesRead == contentLength {
+			r.status = statusDone
+		}
+
+		return len(data), nil
 
 	}
 

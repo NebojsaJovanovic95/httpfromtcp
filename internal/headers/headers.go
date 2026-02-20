@@ -13,6 +13,13 @@ func NewHeaders() Headers {
 	return make(Headers)
 }
 
+func (h Headers) Get(key string) (string, bool) {
+	key = strings.TrimSpace(key)
+	key = strings.ToLower(key)
+	value, ok := h[key]
+	return value, ok
+}
+
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	end := bytes.Index(data, []byte("\r\n"))
 	if end == -1 {
