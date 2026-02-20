@@ -14,7 +14,7 @@ func NewHeaders() Headers {
 }
 
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
-	end := bytes.Index(data, []byte("\r\n\r\n"))
+	end := bytes.Index(data, []byte("\r\n"))
 	if end == -1 {
 		return 0, false, nil
 	}
@@ -39,10 +39,11 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	key := strings.ToLower(parts[0])
 	value := strings.TrimSpace(parts[1])
 
-	if _, ok := h[key]; ok {
-		return 0, false, fmt.Errorf("header key already exists")
+	if existing, ok := h[key]; ok {
+		h[key] = existing + ", " + value
+	} else {
+		h[key] = value
 	}
-	h[key] = value
 
 	return end + 2, false, nil
 }
