@@ -13,6 +13,20 @@ func NewHeaders() Headers {
 	return make(Headers)
 }
 
+func (h Headers) ToString() string {
+	var b strings.Builder
+
+	for key, value := range h {
+		b.WriteString("- ")
+		b.WriteString(key)
+		b.WriteString(": ")
+		b.WriteString(value)
+		b.WriteByte('\n')
+	}
+
+	return b.String()
+}
+
 func (h Headers) Get(key string) (string, bool) {
 	key = strings.TrimSpace(key)
 	key = strings.ToLower(key)

@@ -32,20 +32,20 @@ type RequestLine struct {
 	Method        string
 }
 
-func (r *RequestLine) ToString() string {
+func (rl *RequestLine) ToString() string {
 	str := "Request line:\n"
-	str += "- Method: " + r.Method + "\n"
-	str += "- Target: " + r.RequestTarget + "\n"
-	str += "- Version: " + r.HttpVersion + "\n"
+	str += "- Method: " + rl.Method + "\n"
+	str += "- Target: " + rl.RequestTarget + "\n"
+	str += "- Version: " + rl.HttpVersion + "\n"
 	return str
 }
 
 func (r *Request) ToString() string {
 	str := r.RequestLine.ToString()
 	str += "Headers:\n"
-	for key, value := range r.Headers {
-		str += fmt.Sprintf("- %s: %s\n", key, value)
-	}
+	str += r.Headers.ToString()
+	str += "Body:\n"
+	str += string(r.Body)
 	return str
 }
 
