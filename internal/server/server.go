@@ -36,18 +36,22 @@ func (s *Server) listen() {
 			continue
 		}
 
+		s.closed.Swap(false)
+
 		go s.handle(conn)
 	}
 }
 
 func (s *Server) handle(conn net.Conn) {
-	defer s.Close()
+	defer conn.Close()
 
-	response := `HTTP/1.1 200 OK
-Content-Type: text/plain
-Content-Length: 13
+	body := "Hello World!"
 
-Hello World!`
+	response := "HTTP/1.1 200 OK\r\n" +
+		"Content-Type: text/plain\r\n" +
+		"Content-Length: 12\r\n" +
+		"\r\n" +
+		body
 
 	conn.Write([]byte(response))
 }
